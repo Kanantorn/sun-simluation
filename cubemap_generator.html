@@ -1,0 +1,103 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Panorama to Cubemap Converter</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { width: 100%; height: 100%; display: block; }
+    #controls { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 10px; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h3>Panorama to Cubemap Converter</h3>
+    <button id="downloadCubeMap">Download Cubemap Images</button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script>
+    // Set up the scene
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 0);
+    
+    const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // The cubemap sizes we'll generate
+    const cubeSize = 1024;
+    
+    // Load the panorama
+    const loader = new THREE.TextureLoader();
+    loader.load('./textures/skybox/milkyway_panorama.jpg', function(texture) {
+      // Create a sphere with the panorama as material
+      const geometry = new THREE.SphereGeometry(50, 64, 64);
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.BackSide
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      scene.add(sphere);
+      
+      // Render
+      renderer.render(scene, camera);
+      
+      // Setup cubemap rendering
+      document.getElementById('downloadCubeMap').addEventListener('click', function() {
+        generateCubemap();
+      });
+    });
+    
+    function generateCubemap() {
+      // Create a cube render target
+      const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(cubeSize);
+      const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
+      cubeCamera.update(renderer, scene);
+      
+      // Get the cubemap textures
+      const faceNames = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+      const directions = [
+        new THREE.Vector3(1, 0, 0),   // right
+        new THREE.Vector3(-1, 0, 0),  // left
+        new THREE.Vector3(0, 1, 0),   // top
+        new THREE.Vector3(0, -1, 0),  // bottom
+        new THREE.Vector3(0, 0, 1),   // front
+        new THREE.Vector3(0, 0, -1)   // back
+      ];
+      
+      // For each face of the cubemap
+      for (let i = 0; i < 6; i++) {
+        // Set up a camera looking in this direction
+        camera.position.set(0, 0, 0);
+        camera.lookAt(directions[i]);
+        camera.updateMatrixWorld();
+        
+        // Render to a canvas
+        renderer.render(scene, camera);
+        
+        // Get the image data
+        const imgData = renderer.domElement.toDataURL('image/png');
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.href = imgData;
+        link.download = `${faceNames[i]}.png`;
+        link.click();
+      }
+      
+      alert('Cubemap images generated. Download all 6 PNG files, place them in textures/skybox folder, then refresh the simulation.');
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', function() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>
+  

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GUI } from 'lil-gui';
 
 // Import shaders
@@ -32,7 +33,7 @@ function initThreeJS() {
     try {
         // Scene
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a20); // Dark blue background for space
+        scene.background = new THREE.Color(0x000000); // Black background for better contrast with the skybox
         console.log('Scene created');
 
         // Camera
@@ -49,7 +50,7 @@ function initThreeJS() {
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         // Enable tone mapping for better HDR visuals
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.5;
+        renderer.toneMappingExposure = 0.8;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         console.log('Renderer created');
         
@@ -77,6 +78,48 @@ function initThreeJS() {
         // Texture loader
         const textureLoader = new THREE.TextureLoader();
 
+        // Directly load a panoramic Milky Way background instead of cubemap
+        const milkyWayTexture = textureLoader.load('textures/skybox/milkyway_panorama.jpg', (texture) => {
+            console.log('Milky Way panorama loaded successfully');
+            
+            // Apply texture settings for better appearance
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            
+            // Set anisotropy for sharper appearance at angles
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            
+            // Update the skybox after texture load
+            skyboxMesh.material.needsUpdate = true;
+            
+        }, undefined, (err) => {
+            console.error('Error loading Milky Way panorama:', err);
+        });
+        
+        // Set rendering parameters for better space visualization
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 0.8;
+        
+        // Create a large sphere for the skybox
+        const skyboxGeometry = new THREE.SphereGeometry(400, 60, 40);
+        const skyboxMaterial = new THREE.MeshBasicMaterial({
+            map: milkyWayTexture,
+            side: THREE.BackSide,
+            color: 0xffd28a,  // Warm golden tint
+            transparent: true,
+            opacity: 1.0,
+        });
+        
+        const skyboxMesh = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
+        scene.add(skyboxMesh);
+        
+        // Add a slight rotation to position the most interesting part of the Milky Way
+        skyboxMesh.rotation.y = Math.PI / 4;
+        
+        // Make the scene background black for better contrast with the skybox
+        scene.background = new THREE.Color(0x000000);
+        
         // Create a sun sphere instead of a cube
         const sunGeometry = new THREE.SphereGeometry(1, 128, 128); // Higher segment count for smoother sphere
         console.log('Sun geometry created');
@@ -101,15 +144,6 @@ function initThreeJS() {
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
         scene.add(sun);
         console.log('Sun added to scene');
-
-        // Milky Way Skybox
-        const cubeTextureLoader = new THREE.CubeTextureLoader();
-        const cubeTexture = cubeTextureLoader.load([
-            'textures/skybox/px.png', 'textures/skybox/nx.png',
-            'textures/skybox/py.png', 'textures/skybox/ny.png',
-            'textures/skybox/pz.png', 'textures/skybox/nz.png'
-        ]);
-        scene.background = cubeTexture;
 
         // Create a subtle corona effect around the sun
         const coronaGeometry = new THREE.SphereGeometry(1.2, 64, 64);
@@ -146,9 +180,8 @@ function initThreeJS() {
             { name: 'Neptune', radius: 0.19, orbitalRadius: 10.5, orbitalSpeed: 0.005, eccentricity: 0.011, color: 0x4169E1, rotationSpeed: 0.009, texture: 'textures/neptune.jpg' }
         ];
 
+        // Create planets
         const planets = [];
-
-        // Create and add planets to the scene
         planetsData.forEach(data => {
             // Try to load the texture if available
             let material;
@@ -166,44 +199,13 @@ function initThreeJS() {
                     
                     // Add special maps for certain planets
                     if (data.name === 'Earth') {
-                        // Earth has normal and specular maps
+                        // Earth only has normal map now
                         try {
                             const normalMap = textureLoader.load('textures/earth_normal.jpg');
                             material.normalMap = normalMap;
                             material.normalScale = new THREE.Vector2(0.85, 0.85);
-                            
-                            const specularMap = textureLoader.load('textures/earth_specular.jpg');
-                            material.roughnessMap = specularMap;
-                            material.roughness = 0.5;
                         } catch (e) {
-                            console.warn('Could not load Earth normal/specular maps');
-                        }
-                    } else if (data.name === 'Mercury') {
-                        // Mercury bump map
-                        try {
-                            const bumpMap = textureLoader.load('textures/mercury_bump.jpg');
-                            material.bumpMap = bumpMap;
-                            material.bumpScale = 0.005;
-                        } catch (e) {
-                            console.warn('Could not load Mercury bump map');
-                        }
-                    } else if (data.name === 'Venus') {
-                        // Venus bump map
-                        try {
-                            const bumpMap = textureLoader.load('textures/venus_bump.jpg');
-                            material.bumpMap = bumpMap;
-                            material.bumpScale = 0.005;
-                        } catch (e) {
-                            console.warn('Could not load Venus bump map');
-                        }
-                    } else if (data.name === 'Mars') {
-                        // Mars normal map
-                        try {
-                            const normalMap = textureLoader.load('textures/mars_normal.jpg');
-                            material.normalMap = normalMap;
-                            material.normalScale = new THREE.Vector2(1, 1);
-                        } catch (e) {
-                            console.warn('Could not load Mars normal map');
+                            console.warn('Could not load Earth normal map');
                         }
                     }
                     
@@ -226,7 +228,6 @@ function initThreeJS() {
 
             const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
             const planet = new THREE.Mesh(geometry, material);
-            planet.position.set(data.orbitalRadius, 0, 0); // Initial position
             scene.add(planet);
             
             // Add ring for Saturn
@@ -239,16 +240,29 @@ function initThreeJS() {
                     
                     // Ring material with transparency
                     const ringTexture = textureLoader.load('textures/saturn_ring_alpha.png');
-                    const ringColorTexture = textureLoader.load('textures/saturn_ring_color.jpg');
-                    
-                    const ringMaterial = new THREE.MeshStandardMaterial({
-                        map: ringColorTexture,
-                        alphaMap: ringTexture,
-                        transparent: true,
-                        side: THREE.DoubleSide,
-                        roughness: 0.85,
-                        metalness: 0.0
-                    });
+                    let ringMaterial;
+
+                    try {
+                        const ringColorTexture = textureLoader.load('textures/saturn_ring_color.jpg');
+                        ringMaterial = new THREE.MeshStandardMaterial({
+                            map: ringColorTexture,
+                            alphaMap: ringTexture,
+                            transparent: true,
+                            side: THREE.DoubleSide,
+                            roughness: 0.85,
+                            metalness: 0.0
+                        });
+                    } catch (e) {
+                        console.warn('Could not load Saturn ring color texture, using fallback');
+                        ringMaterial = new THREE.MeshStandardMaterial({
+                            color: 0xA79D7E,
+                            alphaMap: ringTexture,
+                            transparent: true,
+                            side: THREE.DoubleSide,
+                            roughness: 0.85,
+                            metalness: 0.0
+                        });
+                    }
                     
                     // Create the ring mesh
                     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
@@ -261,8 +275,65 @@ function initThreeJS() {
                 }
             }
             
+            // Add Moon to Earth
+            if (data.name === 'Earth') {
+                try {
+                    // Moon parameters
+                    const moonRadius = data.radius * 0.27; // Moon is about 27% of Earth's size
+                    const moonOrbitalRadius = data.radius * 2.5;
+                    const moonOrbitalSpeed = 0.015; // Orbit speed
+                    const moonRotationSpeed = 0.005;
+                    
+                    // Create moon with texture
+                    const moonGeometry = new THREE.SphereGeometry(moonRadius, 24, 24);
+                    let moonMaterial;
+                    
+                    try {
+                        const moonTexture = textureLoader.load('textures/moon.jpg');
+                        moonMaterial = new THREE.MeshStandardMaterial({
+                            map: moonTexture,
+                            metalness: 0.0,
+                            roughness: 0.9 // Moon is rougher than planets
+                        });
+                    } catch (e) {
+                        console.warn('Could not load Moon texture, using fallback');
+                        moonMaterial = new THREE.MeshStandardMaterial({
+                            color: 0xCCCCAA,
+                            metalness: 0.0,
+                            roughness: 0.9
+                        });
+                    }
+                    
+                    const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+                    
+                    // Create an orbit object to hold the moon
+                    const moonOrbit = new THREE.Object3D();
+                    moonOrbit.add(moon);
+                    moon.position.x = moonOrbitalRadius;
+                    
+                    // Add moon orbit to planet
+                    planet.add(moonOrbit);
+                    
+                    // Store moon data for animation
+                    planets.push({ 
+                        object: moon, 
+                        orbit: moonOrbit,
+                        data: {
+                            name: 'Moon',
+                            radius: moonRadius,
+                            orbitalRadius: moonOrbitalRadius,
+                            orbitalSpeed: moonOrbitalSpeed,
+                            rotationSpeed: moonRotationSpeed
+                        }
+                    });
+                    
+                    console.log('Moon added to Earth');
+                } catch (e) {
+                    console.warn('Error creating Moon', e);
+                }
+            }
+            
             planets.push({ object: planet, data });
-            console.log(`${data.name} added to scene`);
         });
 
         // Create stars for the background
@@ -367,22 +438,136 @@ function initThreeJS() {
         }
         console.log('Shooting stars initialized');
 
-        // Set up post-processing with bloom
+        // Set up layer system for selective bloom
+        // Layer 0: Default - everything
+        // Layer 1: Objects that get bloom effect (sun, planets, stars)
+        const BLOOM_LAYER = 1;
+        
+        // Set sun, planets, and stars to the bloom layer
+        sun.layers.enable(BLOOM_LAYER);
+        corona.layers.enable(BLOOM_LAYER);
+        stars.layers.enable(BLOOM_LAYER);
+        
+        // Set planets to the bloom layer
+        planets.forEach(planetObj => {
+            planetObj.object.layers.enable(BLOOM_LAYER);
+            
+            // If this is Earth, also set the Moon to bloom layer
+            if (planetObj.data.name === 'Earth' && planetObj.object.children.length > 0) {
+                // Handle moon orbit and moon
+                planetObj.object.children[0].traverse((child) => {
+                    child.layers.enable(BLOOM_LAYER);
+                });
+            }
+            
+            // For Saturn, set rings to bloom layer
+            if (planetObj.data.name === 'Saturn' && planetObj.object.children.length > 0) {
+                planetObj.object.children[0].layers.enable(BLOOM_LAYER);
+            }
+        });
+        
+        // Make sure all shooting stars are on the bloom layer
+        shootingStars.forEach(starObj => {
+            starObj.object.layers.enable(BLOOM_LAYER);
+            starObj.trail.layers.enable(BLOOM_LAYER);
+        });
+        
+        // Set up post-processing with bloom that only affects selected layers
         const renderScene = new RenderPass(scene, camera);
+        
+        // Bloom pass with stronger settings for sun/planets only
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            3.0, // Further increased strength for shinier stars and shooting stars
-            1.0, // Further increased radius
-            0.05 // Further decreased threshold to include more stars in bloom
+            3.0, // Bloom strength
+            1.0, // Bloom radius
+            0.05 // Bloom threshold
         );
+        
+        // Setup darkMaterial for non-bloomed objects
+        const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 });
+        let materials = {};
+        
+        // Function to set all non-bloom objects to dark material
+        function darkenNonBloomed(obj) {
+            if (!obj.isMesh && !obj.isPoints) return;
+            
+            // Fix for the layers testing - proper way to test if an object is in a layer
+            if (obj.layers.isEnabled(BLOOM_LAYER)) return;
+            
+            // Store original material
+            materials[obj.uuid] = obj.material;
+            
+            // Set to dark material
+            if (obj.isMesh) {
+                obj.material = darkMaterial;
+            }
+        }
+        
+        // Function to restore original materials
+        function restoreMaterials() {
+            for (const id in materials) {
+                const obj = scene.getObjectByProperty('uuid', id);
+                if (obj) {
+                    obj.material = materials[id];
+                }
+            }
+            materials = {};
+        }
+        
+        // Initialize the base renderers with proper sizes
+        const renderTarget = new THREE.WebGLRenderTarget(
+            window.innerWidth * renderer.getPixelRatio(),
+            window.innerHeight * renderer.getPixelRatio()
+        );
+        
+        // Step 1: Initialize bloom composer with explicit render target
+        const bloomComposer = new EffectComposer(renderer, renderTarget.clone());
+        bloomComposer.renderToScreen = false;
+        bloomComposer.addPass(new RenderPass(scene, camera));
+        bloomComposer.addPass(bloomPass);
+        
+        // Force bloom composer to initialize its targets
+        bloomComposer.render(0);
+        
+        // Step 2: Create final composer and add regular scene pass
         const composer = new EffectComposer(renderer);
         composer.addPass(renderScene);
-        composer.addPass(bloomPass);
-        console.log('Post-processing with bloom set up');
+        
+        // Create shader material for final pass
+        const finalPassShader = new THREE.ShaderMaterial({
+            uniforms: {
+                baseTexture: { value: null },
+                bloomTexture: { value: bloomComposer.renderTarget2.texture }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D baseTexture;
+                uniform sampler2D bloomTexture;
+                varying vec2 vUv;
+                void main() {
+                    vec4 base = texture2D(baseTexture, vUv);
+                    vec4 bloom = texture2D(bloomTexture, vUv);
+                    gl_FragColor = base + bloom;
+                }
+            `,
+            defines: {}
+        });
+        
+        // Add final pass to the composer
+        const finalPass = new ShaderPass(finalPassShader, "baseTexture");
+        finalPass.needsSwap = true;
+        composer.addPass(finalPass);
+        console.log('Post-processing with selective bloom initialized');
 
         // GUI controls
         const gui = new GUI();
-
+        
         // Initial parameters for GUI
         const params = {
             // Sun parameters
@@ -413,7 +598,16 @@ function initThreeJS() {
 
             // Quality settings (adjust segments)
             sunSegments: sunGeometry.parameters.widthSegments,
-            coronaSegments: coronaGeometry.parameters.widthSegments
+            coronaSegments: coronaGeometry.parameters.widthSegments,
+            
+            // Planet settings
+            showAllPlanets: true,
+            planetScale: 1.0,
+            
+            // Milky Way settings
+            milkyWayIntensity: 1.0,
+            milkyWayColor: [255, 210, 138], // Golden color (0xffd28a)
+            milkyWayRotation: 0
         };
 
         // Sun controls
@@ -425,7 +619,7 @@ function initThreeJS() {
         sunFolder.add(params, 'sunspotIntensity', 0.0, 1.0, 0.05).onChange(value => sunMaterial.uniforms.u_sunspotIntensity.value = value);
         sunFolder.addColor(params, 'sunBaseColor').onChange(value => sunMaterial.uniforms.u_baseColor.value.set(value[0] / 255, value[1] / 255, value[2] / 255));
         sunFolder.addColor(params, 'sunSpotColor').onChange(value => sunMaterial.uniforms.u_spotColor.value.set(value[0] / 255, value[1] / 255, value[2] / 255));
-
+        
         // Corona controls
         const coronaFolder = gui.addFolder('Corona');
         coronaFolder.add(params, 'coronaSize', 1.1, 2.0, 0.05).onChange(value => {
@@ -436,12 +630,83 @@ function initThreeJS() {
         coronaFolder.add(params, 'coronaIntensity', 0.1, 2.0, 0.1).onChange(value => coronaMaterial.uniforms.u_coronaIntensity.value = value);
         coronaFolder.add(params, 'pulsationSpeed', 0.0, 2.0, 0.1).onChange(value => coronaMaterial.uniforms.u_pulsationSpeed.value = value);
         coronaFolder.addColor(params, 'coronaColor').onChange(value => coronaMaterial.uniforms.u_coronaColor.value.set(value[0] / 255, value[1] / 255, value[2] / 255));
-
+        
         // Bloom effect controls
         const bloomFolder = gui.addFolder('Bloom Effect');
-        bloomFolder.add(params, 'bloomStrength', 0.0, 3.0, 0.1).onChange(value => bloomPass.strength = value);
-        bloomFolder.add(params, 'bloomRadius', 0.0, 1.0, 0.01).onChange(value => bloomPass.radius = value);
-        bloomFolder.add(params, 'bloomThreshold', 0.0, 1.0, 0.01).onChange(value => bloomPass.threshold = value);
+        bloomFolder.add(params, 'bloomStrength', 0.0, 5.0, 0.1).name('Strength').onChange(value => {
+            bloomPass.strength = value;
+        });
+        bloomFolder.add(params, 'bloomRadius', 0.0, 1.0, 0.01).name('Radius').onChange(value => {
+            bloomPass.radius = value;
+        });
+        bloomFolder.add(params, 'bloomThreshold', 0.0, 1.0, 0.01).name('Threshold').onChange(value => {
+            bloomPass.threshold = value;
+        });
+        
+        // Bloom Layer controls to toggle which objects get bloom
+        const bloomLayerFolder = gui.addFolder('Bloom Objects');
+        
+        // Add a toggle for sun bloom
+        const bloomObjects = {
+            sunBloom: true,
+            planetBloom: true,
+            starsBloom: true,
+            shootingStarsBloom: true
+        };
+        
+        bloomLayerFolder.add(bloomObjects, 'sunBloom').name('Sun & Corona').onChange(value => {
+            sun.layers.enable(BLOOM_LAYER);
+            corona.layers.enable(BLOOM_LAYER);
+            
+            if (!value) {
+                sun.layers.disable(BLOOM_LAYER);
+                corona.layers.disable(BLOOM_LAYER);
+            }
+        });
+        
+        bloomLayerFolder.add(bloomObjects, 'planetBloom').name('Planets').onChange(value => {
+            planets.forEach(planetObj => {
+                if (value) {
+                    planetObj.object.layers.enable(BLOOM_LAYER);
+                    
+                    // For Earth and Saturn, handle children
+                    if (['Earth', 'Saturn'].includes(planetObj.data.name) && planetObj.object.children.length > 0) {
+                        planetObj.object.children.forEach(child => {
+                            child.traverse(c => c.layers.enable(BLOOM_LAYER));
+                        });
+                    }
+                } else {
+                    planetObj.object.layers.disable(BLOOM_LAYER);
+                    
+                    // For Earth and Saturn, handle children
+                    if (['Earth', 'Saturn'].includes(planetObj.data.name) && planetObj.object.children.length > 0) {
+                        planetObj.object.children.forEach(child => {
+                            child.traverse(c => c.layers.disable(BLOOM_LAYER));
+                        });
+                    }
+                }
+            });
+        });
+        
+        bloomLayerFolder.add(bloomObjects, 'starsBloom').name('Background Stars').onChange(value => {
+            if (value) {
+                stars.layers.enable(BLOOM_LAYER);
+            } else {
+                stars.layers.disable(BLOOM_LAYER);
+            }
+        });
+        
+        bloomLayerFolder.add(bloomObjects, 'shootingStarsBloom').name('Shooting Stars').onChange(value => {
+            shootingStars.forEach(starObj => {
+                if (value) {
+                    starObj.object.layers.enable(BLOOM_LAYER);
+                    starObj.trail.layers.enable(BLOOM_LAYER);
+                } else {
+                    starObj.object.layers.disable(BLOOM_LAYER);
+                    starObj.trail.layers.disable(BLOOM_LAYER);
+                }
+            });
+        });
 
         // General settings
         const generalFolder = gui.addFolder('General Settings');
@@ -450,7 +715,12 @@ function initThreeJS() {
             ambientLight.intensity = value;
         });
         generalFolder.add(params, 'pointLightIntensity', 0.0, 5.0, 0.1).onChange(value => sunLight.intensity = value);
-        generalFolder.addColor(params, 'backgroundIntensity').onChange(value => scene.background.setRGB(value[0] / 255, value[1] / 255, value[2] / 255));
+        generalFolder.addColor(params, 'backgroundIntensity').onChange(value => {
+            // Only update if the background is a color, not a skybox
+            if (scene.background instanceof THREE.Color) {
+                scene.background.setRGB(value[0] / 255, value[1] / 255, value[2] / 255);
+            }
+        });
 
         // Quality settings
         const qualityFolder = gui.addFolder('Quality');
@@ -462,14 +732,92 @@ function initThreeJS() {
             coronaGeometry.dispose();
             corona.geometry = new THREE.SphereGeometry(params.coronaSize, value, value);
         });
+        
+        // Planet Controls folder
+        const planetFolder = gui.addFolder('Planet Controls');
+        
+        // Add planet scale slider
+        planetFolder.add(params, 'planetScale', 0.1, 3.0, 0.1).name('Planet Size Scale').onChange(value => {
+            planets.forEach(planetObj => {
+                // Skip the sun
+                if (planetObj.data.name !== 'Sun') {
+                    // Apply scale based on original radius
+                    planetObj.object.scale.set(value, value, value);
+                }
+            });
+        });
+        
+        // Add planet visibility toggles
+        planetFolder.add(params, 'showAllPlanets').name('Show All Planets').onChange(value => {
+            // Create planet toggles if they don't exist
+            if (!window.planetToggles) {
+                window.planetToggles = {};
+                planetsData.forEach(data => {
+                    window.planetToggles[data.name] = true;
+                });
+                window.planetToggles['Moon'] = true;
+            }
+            
+            // Update all individual toggles
+            Object.keys(window.planetToggles).forEach(planetName => {
+                window.planetToggles[planetName] = value;
+                
+                // Update planet visibility
+                const planetObj = planets.find(p => p.data.name === planetName);
+                if (planetObj) {
+                    planetObj.object.visible = value;
+                }
+            });
+        });
+        
+        // Create planet toggles if they don't exist
+        if (!window.planetToggles) {
+            window.planetToggles = {};
+            planetsData.forEach(data => {
+                window.planetToggles[data.name] = true;
+            });
+            window.planetToggles['Moon'] = true;
+        }
+        
+        // Add individual planet toggles
+        Object.keys(window.planetToggles).forEach(planetName => {
+            planetFolder.add(window.planetToggles, planetName).name(`Show ${planetName}`).onChange(value => {
+                const planetObj = planets.find(p => p.data.name === planetName);
+                if (planetObj) {
+                    planetObj.object.visible = value;
+                }
+                
+                // Check if all planets have the same visibility
+                const allSameValue = Object.values(window.planetToggles).every(v => v === value);
+                if (allSameValue) {
+                    // Update the "Show All Planets" control
+                    params.showAllPlanets = value;
+                }
+            });
+        });
+
+        // Milky Way controls
+        const milkyWayFolder = gui.addFolder('Milky Way');
+        milkyWayFolder.add(params, 'milkyWayIntensity', 0.1, 2.0, 0.1).name('Intensity').onChange(value => {
+            skyboxMaterial.opacity = value;
+        });
+        milkyWayFolder.addColor(params, 'milkyWayColor').name('Tint Color').onChange(value => {
+            skyboxMaterial.color.setRGB(value[0]/255, value[1]/255, value[2]/255);
+        });
+        milkyWayFolder.add(params, 'milkyWayRotation', 0, Math.PI * 2, 0.1).name('Rotation').onChange(value => {
+            skyboxMesh.rotation.y = value;
+        });
 
         // Open all folders by default
         sunFolder.open();
         coronaFolder.open();
         bloomFolder.open();
+        bloomLayerFolder.open();
+        planetFolder.open();
         generalFolder.open();
         qualityFolder.open();
-
+        milkyWayFolder.open();
+        
         console.log('GUI controls set up');
 
         // Animation loop
@@ -539,35 +887,65 @@ function initThreeJS() {
             // Animate planets with elliptical orbits
             const currentTime = performance.now() * 0.001; // Get current time in seconds
             planets.forEach(planetObj => {
-                const { object, data } = planetObj;
+                const { object, data, orbit } = planetObj;
+
+                // Special case for Moon orbiting around Earth
+                if (data.name === 'Moon' && orbit) {
+                    // Rotate moon around its own axis
+                    object.rotation.y += data.rotationSpeed;
+                    
+                    // Rotate moon orbit around Earth
+                    orbit.rotation.y += data.orbitalSpeed;
+                    return;
+                }
                 
-                // Calculate elliptical orbit position
-                const angle = currentTime * data.orbitalSpeed;
-                const a = data.orbitalRadius; // Semi-major axis
-                const e = data.eccentricity; // Eccentricity
-                const b = a * Math.sqrt(1 - e * e); // Semi-minor axis
-                
-                // Parametric form of ellipse
-                const x = a * Math.cos(angle);
-                const z = b * Math.sin(angle);
-                
-                // Apply orbital tilt randomly but consistently for each planet
-                const planetSeed = data.name.charCodeAt(0); // Use first character as seed
-                const tiltAngle = (planetSeed % 20) * 0.01; // Small tilt between 0 and 0.19
-                
-                // Apply position with orbital tilt
-                object.position.set(
-                    x,
-                    Math.sin(angle) * Math.sin(tiltAngle) * a * 0.05, // Small y-offset for tilt
-                    z
-                );
+                // Regular planet calculation
+                if (!orbit) {
+                    // Calculate elliptical orbit position
+                    const angle = currentTime * data.orbitalSpeed;
+                    const a = data.orbitalRadius; // Semi-major axis
+                    const e = data.eccentricity || 0; // Eccentricity
+                    const b = a * Math.sqrt(1 - e * e); // Semi-minor axis
+                    
+                    // Parametric form of ellipse
+                    const x = a * Math.cos(angle);
+                    const z = b * Math.sin(angle);
+                    
+                    // Apply orbital tilt randomly but consistently for each planet
+                    const planetSeed = data.name.charCodeAt(0); // Use first character as seed
+                    const tiltAngle = (planetSeed % 20) * 0.01; // Small tilt between 0 and 0.19
+                    
+                    // Apply position with orbital tilt
+                    object.position.set(
+                        x,
+                        Math.sin(angle) * Math.sin(tiltAngle) * a * 0.05, // Small y-offset for tilt
+                        z
+                    );
+                }
                 
                 // Rotate on its own axis
                 object.rotation.y += data.rotationSpeed;
             });
 
-            // Render with post-processing
-            composer.render();
+            try {
+                // First render scene with selective bloom
+                // Store all objects' original materials
+                materials = {};
+                scene.traverse(darkenNonBloomed);
+                
+                // Render bloom only
+                bloomComposer.render();
+                
+                // Restore original materials
+                restoreMaterials();
+                
+                // Final render with combined bloom
+                composer.render();
+            } catch (error) {
+                // Fallback to standard rendering if something goes wrong
+                console.error("Error in rendering pipeline:", error);
+                renderer.render(scene, camera);
+            }
         }
 
         console.log('Starting animation loop...');
@@ -578,9 +956,18 @@ function initThreeJS() {
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
+            
+            // Update renderer and composers
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            
+            // Update main composer
             composer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Update bloom composer
+            bloomComposer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Update bloom pass resolution
             bloomPass.resolution.set(window.innerWidth, window.innerHeight);
         });
         console.log('Resize event listener added');
