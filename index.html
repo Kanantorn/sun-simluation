@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyperrealistic Sun Simulation</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Import Three.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+    <!-- Loading indicator -->
+    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px; background: rgba(0, 0, 0, 0.7); color: white; border-radius: 10px; font-family: Arial, sans-serif; z-index: 1000;">
+        Loading Sun Simulation...
+    </div>
+    
+    <!-- Sun Vertex Shader -->
+    <script id="sunVertexShader" type="x-shader/x-vertex">
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+            vPosition = position;
+            vNormal = normalize(normalMatrix * normal);
+            
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <!-- Sun Fragment Shader -->
+    <script id="sunFragmentShader" type="x-shader/x-fragment">
+        uniform float u_time;
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        // Random function
+        float random(in vec3 st) {
+            return fract(sin(dot(st, vec3(12.9898, 78.233, 23.112))) * 43758.5453123);
+        }
+
+        // Noise function
+        float noise(in vec3 _pos) {
+            vec3 i_pos = floor(_pos);
+            vec3 f_pos = fract(_pos);
+
+            float i_time = floor(u_time * 0.2);
+            float f_time = fract(u_time * 0.2);
+
+            // Four corners in 2D of a tile for current time
+            float aa = random(i_pos + vec3(0.0, 0.0, 0.0) + i_time);
+            float ab = random(i_pos + vec3(1.0, 0.0, 0.0) + i_time);
+            float ac = random(i_pos + vec3(0.0, 1.0, 0.0) + i_time);
+            float ad = random(i_pos + vec3(1.0, 1.0, 0.0) + i_time);
+            float ae = random(i_pos + vec3(0.0, 0.0, 1.0) + i_time);
+            float af = random(i_pos + vec3(1.0, 0.0, 1.0) + i_time);
+            float ag = random(i_pos + vec3(0.0, 1.0, 1.0) + i_time);
+            float ah = random(i_pos + vec3(1.0, 1.0, 1.0) + i_time);
+
+            // Four corners for next time
+            float ba = random(i_pos + vec3(0.0, 0.0, 0.0) + (i_time + 1.0));
+            float bb = random(i_pos + vec3(1.0, 0.0, 0.0) + (i_time + 1.0));
+            float bc = random(i_pos + vec3(0.0, 1.0, 0.0) + (i_time + 1.0));
+            float bd = random(i_pos + vec3(1.0, 1.0, 0.0) + (i_time + 1.0));
+            float be = random(i_pos + vec3(0.0, 0.0, 1.0) + (i_time + 1.0));
+            float bf = random(i_pos + vec3(1.0, 0.0, 1.0) + (i_time + 1.0));
+            float bg = random(i_pos + vec3(0.0, 1.0, 1.0) + (i_time + 1.0));
+            float bh = random(i_pos + vec3(1.0, 1.0, 1.0) + (i_time + 1.0));
+
+            // Smooth step
+            vec3 t = smoothstep(0.0, 1.0, f_pos);
+            float t_time = smoothstep(0.0, 1.0, f_time);
+
+            // Mix for current time
+            float current = 
+                mix(
+                    mix(
+                        mix(aa, ab, t.x),
+                        mix(ac, ad, t.x),
+                        t.y
+                    ),
+                    mix(
+                        mix(ae, af, t.x),
+                        mix(ag, ah, t.x),
+                        t.y
+                    ),
+                    t.z
+                );
+
+            // Mix for next time
+            float next = 
+                mix(
+                    mix(
+                        mix(ba, bb, t.x),
+                        mix(bc, bd, t.x),
+                        t.y
+                    ),
+                    mix(
+                        mix(be, bf, t.x),
+                        mix(bg, bh, t.x),
+                        t.y
+                    ),
+                    t.z
+                );
+
+            // Mix between times
+            return mix(current, next, t_time);
+        }
+
+        // Fractal Brownian Motion
+        #define NUM_OCTAVES 6
+        float fBm(in vec3 _pos, in float sz) {
+            float v = 0.0;
+            float a = 0.2;
+            _pos *= sz;
+
+            // Create rotation matrices for animation
+            vec3 angle = vec3(-0.001 * u_time, 0.0001 * u_time, 0.0004 * u_time);
+            mat3 rotx = mat3(
+                1.0, 0.0, 0.0,
+                0.0, cos(angle.x), -sin(angle.x),
+                0.0, sin(angle.x), cos(angle.x)
+            );
+            mat3 roty = mat3(
+                cos(angle.y), 0.0, sin(angle.y),
+                0.0, 1.0, 0.0,
+                -sin(angle.y), 0.0, cos(angle.y)
+            );
+            mat3 rotz = mat3(
+                cos(angle.z), -sin(angle.z), 0.0,
+                sin(angle.z), cos(angle.z), 0.0,
+                0.0, 0.0, 1.0
+            );
+
+            // Apply multiple octaves of noise
+            for (int i = 0; i < NUM_OCTAVES; ++i) {
+                v += a * noise(_pos);
+                _pos = rotx * roty * rotz * _pos * 2.0;
+                a *= 0.8;
+            }
+            return v;
+        }
+
+        void main() {
+            vec3 st = vPosition;
+
+            // Apply fractal noise for surface texture
+            vec3 q = vec3(0.0);
+            q.x = fBm(st, 5.0);
+            q.y = fBm(st + vec3(1.2, 3.2, 1.52), 5.0);
+            q.z = fBm(st + vec3(3.3, 2.8, 1.0), 5.0);
+
+            // Apply second layer of noise for more detail
+            vec3 r = vec3(0.0);
+            r.x = fBm(st + q + vec3(1.7, 9.2, 3.1), 15.0);
+            r.y = fBm(st + q + vec3(8.3, 2.8, 7.1), 15.0);
+
+            // Calculate color based on noise
+            float f = fBm(st + r, 10.0);
+
+            // Mix colors based on noise value
+            vec3 color = mix(
+                vec3(0.8, 0.3, 0.0),  // Dark orange/red
+                vec3(1.0, 0.6, 0.0),  // Bright orange/yellow
+                f
+            );
+
+            // Add glow effect
+            float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.0);
+            color += vec3(1.0, 0.6, 0.3) * fresnel * 0.5;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <!-- Corona Vertex Shader -->
+    <script id="coronaVertexShader" type="x-shader/x-vertex">
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+            vNormal = normalize(normalMatrix * normal);
+            
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <!-- Corona Fragment Shader -->
+    <script id="coronaFragmentShader" type="x-shader/x-fragment">
+        uniform float u_time;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+            // Calculate intensity based on view angle (Fresnel effect)
+            float intensity = 1.0 - dot(normalize(vNormal), normalize(vViewPosition));
+            intensity = pow(intensity, 2.0);
+            
+            // Pulsate the corona slightly
+            intensity *= 0.8 + 0.2 * sin(u_time * 0.5);
+            
+            // Create orange-yellow glow color
+            vec3 glow = vec3(1.0, 0.6, 0.0) * intensity;
+            
+            gl_FragColor = vec4(glow, intensity * 0.5);
+        }
+    </script>
+    
+    <script>
+        console.log('Shader-based sun simulation - starting');
+        
+        // Function to initialize Three.js
+        function initThreeJS() {
+            console.log('Initializing Three.js...');
+            
+            try {
+                // Scene
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x000000); // Black background for space
+                console.log('Scene created');
+
+                // Camera
+                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.z = 5;
+                console.log('Camera created');
+
+                // Create renderer
+                const renderer = new THREE.WebGLRenderer({
+                    antialias: true
+                });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                console.log('Renderer created');
+                
+                // Append the renderer's canvas to the body
+                document.body.appendChild(renderer.domElement);
+                console.log('Canvas appended to body');
+
+                // Add ambient light to illuminate the scene
+                const ambientLight = new THREE.AmbientLight(0x555555);
+                scene.add(ambientLight);
+                console.log('Ambient light added');
+
+                // Add point light at the center to make the sun glow
+                const pointLight = new THREE.PointLight(0xffffff, 2, 100);
+                pointLight.position.set(0, 0, 0);
+                scene.add(pointLight);
+                console.log('Point light added');
+
+                // Get shader code from script tags
+                const sunVertexShader = document.getElementById('sunVertexShader').textContent;
+                const sunFragmentShader = document.getElementById('sunFragmentShader').textContent;
+                const coronaVertexShader = document.getElementById('coronaVertexShader').textContent;
+                const coronaFragmentShader = document.getElementById('coronaFragmentShader').textContent;
+
+                // Create sun geometry
+                const sunGeometry = new THREE.SphereGeometry(1, 64, 64); // Higher segment count for smoother sphere
+                console.log('Sun geometry created');
+                
+                // Create sun shader material
+                const sunMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        u_time: { value: 0.0 }
+                    },
+                    vertexShader: sunVertexShader,
+                    fragmentShader: sunFragmentShader
+                });
+                console.log('Sun shader material created');
+                
+                const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+                scene.add(sun);
+                console.log('Sun added to scene');
+
+                // Create corona geometry (slightly larger than sun)
+                const coronaGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+                
+                // Create corona shader material
+                const coronaMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        u_time: { value: 0.0 }
+                    },
+                    vertexShader: coronaVertexShader,
+                    fragmentShader: coronaFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.FrontSide
+                });
+                
+                const corona = new THREE.Mesh(coronaGeometry, coronaMaterial);
+                scene.add(corona);
+                console.log('Corona added to scene');
+
+                // Animation loop
+                function animate() {
+                    requestAnimationFrame(animate);
+                    
+                    // Update shader time uniform
+                    const time = performance.now() / 1000;
+                    sunMaterial.uniforms.u_time.value = time;
+                    coronaMaterial.uniforms.u_time.value = time;
+                    
+                    renderer.render(scene, camera);
+                }
+
+                console.log('Starting animation loop...');
+                animate();
+                console.log('Animation loop started');
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                });
+                console.log('Resize event listener added');
+                
+                // Remove loading indicator
+                const loadingElement = document.getElementById('loading');
+                if (loadingElement) {
+                    loadingElement.remove();
+                }
+                
+            } catch (error) {
+                console.error('Error initializing Three.js:', error);
+                
+                // Update loading indicator to show error
+                const loadingElement = document.getElementById('loading');
+                if (loadingElement) {
+                    loadingElement.innerHTML = `
+                        <h2 style="margin-top: 0;">Error Loading Sun Simulation</h2>
+                        <p>${error.message}</p>
+                        <p>Please check the console for more details.</p>
+                    `;
+                    loadingElement.style.background = 'rgba(255, 0, 0, 0.7)';
+                }
+            }
+        }
+
+        // Initialize when the page is loaded
+        window.addEventListener('load', initThreeJS);
+    </script>
+</body>
+</html>

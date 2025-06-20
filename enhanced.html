@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Sun Simulation</title>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading indicator with progress and error display -->
+    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px; background: rgba(0, 0, 0, 0.7); color: white; border-radius: 10px; font-family: Arial, sans-serif; z-index: 1000; min-width: 300px; text-align: center;">
+        <div id="loading-message">Loading Enhanced Sun Simulation...</div>
+        <div id="loading-progress" style="margin-top: 10px; height: 5px; background: rgba(255,255,255,0.2); border-radius: 5px; overflow: hidden;">
+            <div id="progress-bar" style="height: 100%; width: 0%; background: #4CAF50; transition: width 0.3s;"></div>
+        </div>
+        <div id="loading-error" style="margin-top: 10px; color: #ff6b6b; display: none;"></div>
+    </div>
+    
+    <!-- Fallback content if advanced features fail -->
+    <div id="fallback-content" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; text-align: center; padding-top: 20%;">
+        <h2>Simple Sun Visualization</h2>
+        <p>The advanced sun simulation could not be loaded. Displaying simplified version.</p>
+        <div id="simple-sun" style="margin: 20px auto; width: 200px; height: 200px; background: radial-gradient(circle, #ffdd44 0%, #ff8800 70%, rgba(255,136,0,0) 100%); border-radius: 50%; box-shadow: 0 0 50px #ff8800, 0 0 100px #ffdd44;"></div>
+        <p id="error-details" style="max-width: 600px; margin: 20px auto; color: #ff6b6b;"></p>
+        <button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 20px;">Try Again</button>
+    </div>
+    
+    <!-- Sun Vertex Shader -->
+    <script id="sunVertexShader" type="x-shader/x-vertex">
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+            vPosition = position;
+            vNormal = normalize(normalMatrix * normal);
+            
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <!-- Sun Fragment Shader -->
+    <script id="sunFragmentShader" type="x-shader/x-fragment">
+        uniform float u_time;
+        uniform float u_octaves;
+        uniform float u_lacunarity;
+        uniform float u_gain;
+        uniform float u_rotationSpeed;
+        uniform float u_sunspotIntensity;
+        uniform vec3 u_baseColor;
+        uniform vec3 u_spotColor;
+        
+        varying vec3 vPosition;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        // Improved hash function for better randomness
+        vec3 hash33(vec3 p) {
+            p = fract(p * vec3(443.8975, 397.2973, 491.1871));
+            p += dot(p.zxy, p.yxz + 19.27);
+            return fract(vec3(p.x * p.y, p.z * p.x, p.y * p.z));
+        }
+
+        // Quintic interpolation function (smoother than smoothstep)
+        float quintic(float t) {
+            return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+        }
+
+        // Enhanced noise function with quintic interpolation
+        float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            
+            // Quintic interpolation
+            vec3 u = vec3(quintic(f.x), quintic(f.y), quintic(f.z));
+            
+            // 8 corners of the cube
+            float a = dot(hash33(i + vec3(0.0, 0.0, 0.0)), f - vec3(0.0, 0.0, 0.0));
+            float b = dot(hash33(i + vec3(1.0, 0.0, 0.0)), f - vec3(1.0, 0.0, 0.0));
+            float c = dot(hash33(i + vec3(0.0, 1.0, 0.0)), f - vec3(0.0, 1.0, 0.0));
+            float d = dot(hash33(i + vec3(1.0, 1.0, 0.0)), f - vec3(1.0, 1.0, 0.0));
+            float e = dot(hash33(i + vec3(0.0, 0.0, 1.0)), f - vec3(0.0, 0.0, 1.0));
+            float f1 = dot(hash33(i + vec3(1.0, 0.0, 1.0)), f - vec3(1.0, 0.0, 1.0));
+            float g = dot(hash33(i + vec3(0.0, 1.0, 1.0)), f - vec3(0.0, 1.0, 1.0));
+            float h = dot(hash33(i + vec3(1.0, 1.0, 1.0)), f - vec3(1.0, 1.0, 1.0));
+            
+            // Trilinear interpolation
+            float x1 = mix(a, b, u.x);
+            float x2 = mix(c, d, u.x);
+            float y1 = mix(x1, x2, u.y);
+            
+            float x3 = mix(e, f1, u.x);
+            float x4 = mix(g, h, u.x);
+            float y2 = mix(x3, x4, u.y);
+            
+            return mix(y1, y2, u.z) * 0.5 + 0.5;
+        }
+
+        // Domain warping function for more complex patterns
+        vec3 domainWarp(vec3 p, float strength) {
+            vec3 q = vec3(
+                noise(p + vec3(5.2, 1.3, 2.8)),
+                noise(p + vec3(1.7, 9.2, 3.1)),
+                noise(p + vec3(8.3, 2.8, 5.6))
+            );
+            
+            return p + q * strength;
+        }
+
+        // Advanced Fractal Brownian Motion with variable lacunarity and gain
+        float fBm(vec3 p, float octaves, float lacunarity, float gain) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            float frequency = 1.0;
+            
+            // Create rotation matrices for animation
+            float angle = u_rotationSpeed * u_time;
+            mat3 rotx = mat3(
+                1.0, 0.0, 0.0,
+                0.0, cos(angle), -sin(angle),
+                0.0, sin(angle), cos(angle)
+            );
+            mat3 roty = mat3(
+                cos(angle * 0.5), 0.0, sin(angle * 0.5),
+                0.0, 1.0, 0.0,
+                -sin(angle * 0.5), 0.0, cos(angle * 0.5)
+            );
+            mat3 rotz = mat3(
+                cos(angle * 0.3), -sin(angle * 0.3), 0.0,
+                sin(angle * 0.3), cos(angle * 0.3), 0.0,
+                0.0, 0.0, 1.0
+            );
+            
+            // Apply domain warping for more complex patterns
+            p = domainWarp(p, 0.3);
+            
+            // Apply multiple octaves of noise
+            for (float i = 0.0; i < 10.0; i++) {
+                if (i >= octaves) break;
+                
+                value += amplitude * noise(p);
+                
+                // Apply per-octave rotation for more natural patterns
+                p = rotx * roty * rotz * p * lacunarity;
+                amplitude *= gain;
+            }
+            
+            return value;
+        }
+
+        // Sunspot simulation function
+        float sunspot(vec3 p, float threshold, float sharpness) {
+            // Generate large-scale noise pattern for sunspot placement
+            float spotPattern = noise(p * 0.5);
+            
+            // Apply threshold with adjustable sharpness
+            return 1.0 - smoothstep(threshold, threshold + sharpness, spotPattern);
+        }
+
+        // Temperature mapping function (converts noise value to realistic sun color)
+        vec3 temperatureMap(float value, float spotFactor) {
+            // Base colors for different temperatures
+            vec3 coolColor = vec3(0.8, 0.3, 0.0);   // Dark orange/red (cooler regions)
+            vec3 midColor = vec3(1.0, 0.6, 0.0);    // Bright orange/yellow (mid temperature)
+            vec3 hotColor = vec3(1.0, 0.9, 0.7);    // Almost white (hottest regions)
+            vec3 spotColor = vec3(0.4, 0.1, 0.0);   // Dark spot color
+            
+            // Mix between temperature colors based on noise value
+            vec3 baseColor = mix(coolColor, midColor, value);
+            baseColor = mix(baseColor, hotColor, pow(value, 2.0));
+            
+            // Apply sunspot darkening
+            return mix(baseColor, spotColor, spotFactor * u_sunspotIntensity);
+        }
+
+        // Granulation effect (simulates convection cells on sun's surface)
+        float granulation(vec3 p, float scale) {
+            // Use higher frequency noise for small-scale granulation
+            return noise(p * scale) * 0.2;
+        }
+
+        void main() {
+            vec3 p = vPosition;
+            
+            // Apply fractal noise for surface texture with user-controlled parameters
+            float mainNoise = fBm(p, u_octaves, u_lacunarity, u_gain);
+            
+            // Generate sunspots
+            float spotFactor = sunspot(p, 0.6, 0.1);
+            
+            // Add granulation effect
+            float grain = granulation(p, 20.0);
+            mainNoise = mix(mainNoise, mainNoise * (1.0 - grain), 0.3);
+            
+            // Calculate final color with temperature mapping
+            vec3 color = temperatureMap(mainNoise, spotFactor);
+            
+            // Add glow effect using Fresnel
+            float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.0);
+            color += vec3(1.0, 0.6, 0.3) * fresnel * 0.5;
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <!-- Corona Vertex Shader -->
+    <script id="coronaVertexShader" type="x-shader/x-vertex">
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        varying vec3 vWorldPosition;
+
+        void main() {
+            vNormal = normalize(normalMatrix * normal);
+            
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPosition.xyz;
+            
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <!-- Corona Fragment Shader -->
+    <script id="coronaFragmentShader" type="x-shader/x-fragment">
+        uniform float u_time;
+        uniform float u_coronaSize;
+        uniform float u_coronaIntensity;
+        uniform float u_pulsationSpeed;
+        uniform vec3 u_coronaColor;
+        
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+        varying vec3 vWorldPosition;
+
+        // Noise function for corona variation
+        float noise(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            
+            float n = i.x + i.y * 157.0 + 113.0 * i.z;
+            return mix(
+                mix(
+                    mix(fract(sin(n + 0.0) * 43758.5453), fract(sin(n + 1.0) * 43758.5453), f.x),
+                    mix(fract(sin(n + 157.0) * 43758.5453), fract(sin(n + 158.0) * 43758.5453), f.x),
+                    f.y
+                ),
+                mix(
+                    mix(fract(sin(n + 113.0) * 43758.5453), fract(sin(n + 114.0) * 43758.5453), f.x),
+                    mix(fract(sin(n + 270.0) * 43758.5453), fract(sin(n + 271.0) * 43758.5453), f.x),
+                    f.y
+                ),
+                f.z
+            );
+        }
+
+        void main() {
+            // Calculate intensity based on view angle (Fresnel effect)
+            float intensity = 1.0 - dot(normalize(vNormal), normalize(vViewPosition));
+            intensity = pow(intensity, 1.5);
+            
+            // Complex pulsation using multiple sine waves with different frequencies
+            float pulsation = 
+                0.8 + 
+                0.1 * sin(u_time * u_pulsationSpeed) + 
+                0.05 * sin(u_time * u_pulsationSpeed * 2.7) + 
+                0.025 * sin(u_time * u_pulsationSpeed * 5.3 + 1.5);
+            
+            // Add noise variation to the corona
+            float noiseVal = noise(vWorldPosition * 0.5 + u_time * 0.1);
+            intensity *= pulsation * (0.9 + 0.1 * noiseVal);
+            
+            // Distance-based color variation
+            float distFactor = length(vWorldPosition) / u_coronaSize;
+            vec3 innerColor = u_coronaColor;
+            vec3 outerColor = vec3(1.0, 0.6, 0.1); // Slightly more yellow at the edges
+            vec3 finalColor = mix(innerColor, outerColor, pow(distFactor, 2.0));
+            
+            // Create glow color with intensity
+            vec3 glow = finalColor * intensity * u_coronaIntensity;
+            
+            // Fade out at the edges
+            float alpha = intensity * 0.5 * u_coronaIntensity;
+            
+            gl_FragColor = vec4(glow, alpha);
+        }
+    </script>
+    
+    <!-- Main script as module -->
+    <script type="module" src="../src/main.js"></script>
+</body>
+</html>

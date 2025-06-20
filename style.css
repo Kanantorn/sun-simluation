@@ -1,0 +1,94 @@
+body { 
+    margin: 0; 
+    padding: 0;
+    overflow: hidden; 
+    background-color: #000; 
+    width: 100vw;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+}
+
+canvas { 
+    display: block; 
+    width: 100%; 
+    height: 100%;
+}
+
+.error-message {
+    color: white;
+    background-color: rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    border-radius: 5px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 80%;
+    text-align: center;
+}
+
+/* Style for lil-gui interface */
+.lil-gui {
+    --width: 280px;
+    --name-width: 45%;
+    --font-size: 11px;
+    --input-font-size: 11px;
+    --padding: 6px;
+    --spacing: 4px;
+    --widget-height: 20px;
+    --title-height: calc(var(--widget-height) + var(--spacing) * 1.25);
+    --background-color: #1f1f1f;
+    --text-color: #ebebeb;
+    --title-background-color: #111111;
+    --title-text-color: #ebebeb;
+    --widget-color: #424242;
+    --hover-color: #4f4f4f;
+    --focus-color: #595959;
+    --number-color: #2cc9ff;
+    --string-color: #a2db3c;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Make lil-gui more visible against the dark background */
+.lil-gui .controller {
+    border-left: 3px solid #2cc9ff;
+    border-radius: 0;
+    margin-bottom: 2px;
+}
+
+.lil-gui .controller.boolean {
+    border-left-color: #a2db3c;
+}
+
+.lil-gui .controller.function {
+    border-left-color: #e61d5f;
+}
+
+.lil-gui .controller.color {
+    border-left-color: #ff8800;
+}
+
+.lil-gui .controller.number {
+    border-left-color: #2cc9ff;
+}
+
+.lil-gui .controller.option {
+    border-left-color: #8800ff;
+}
+
+/* Add a subtle glow to the GUI */
+.lil-gui {
+    box-shadow: 0 0 10px rgba(44, 201, 255, 0.2);
+}
+
+/* Style for loading indicator */
+#loading {
+    font-size: 16px;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    animation: pulse 1.5s infinite alternate;
+}
+
+@keyframes pulse {
+    from { opacity: 0.7; }
+    to { opacity: 1; }
+}

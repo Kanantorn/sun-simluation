@@ -1,0 +1,14 @@
+# Dependencies
+/node_modules
+
+# Vite
+.vite/
+dist/
+
+# IDE config files
+.idea/
+.vscode/
+
+# OS-generated files
+.DS_Store
+Thumbs.db 
