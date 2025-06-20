@@ -65,16 +65,17 @@ function initThreeJS() {
         controls.maxDistance = 10;
         console.log('Orbit controls added');
 
-        // Add ambient light to illuminate the scene (now controlled by GUI)
-        const ambientLight = new THREE.AmbientLight(0xFFFFFF); // Increased ambient light for better planet visibility
+        // Lighting for PBR materials
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
         scene.add(ambientLight);
-        console.log('Ambient light added');
 
-        // Add point light at the center to make the sun glow
-        const pointLight = new THREE.PointLight(0xffffff, 10, 100);
-        pointLight.position.set(0, 0, 0);
-        scene.add(pointLight);
-        console.log('Point light added');
+        // Point light from the sun
+        const sunLight = new THREE.PointLight(0xffffff, 2, 50);
+        sunLight.position.set(0, 0, 0);
+        scene.add(sunLight);
+
+        // Texture loader
+        const textureLoader = new THREE.TextureLoader();
 
         // Create a sun sphere instead of a cube
         const sunGeometry = new THREE.SphereGeometry(1, 128, 128); // Higher segment count for smoother sphere
@@ -101,6 +102,15 @@ function initThreeJS() {
         scene.add(sun);
         console.log('Sun added to scene');
 
+        // Milky Way Skybox
+        const cubeTextureLoader = new THREE.CubeTextureLoader();
+        const cubeTexture = cubeTextureLoader.load([
+            'textures/skybox/px.png', 'textures/skybox/nx.png',
+            'textures/skybox/py.png', 'textures/skybox/ny.png',
+            'textures/skybox/pz.png', 'textures/skybox/nz.png'
+        ]);
+        scene.background = cubeTexture;
+
         // Create a subtle corona effect around the sun
         const coronaGeometry = new THREE.SphereGeometry(1.2, 64, 64);
         const coronaMaterial = new THREE.ShaderMaterial({
@@ -126,55 +136,132 @@ function initThreeJS() {
 
         // Define planet properties
         const planetsData = [
-            { name: 'Mercury', radius: 0.05, orbitalRadius: 1.5, orbitalSpeed: 0.048, color: 0xAAAAAA, rotationSpeed: 0.005, texture: 'textures/mercury.jpg' },
-            { name: 'Venus', radius: 0.08, orbitalRadius: 2.0, orbitalSpeed: 0.035, color: 0xE6B800, rotationSpeed: 0.003, texture: 'textures/venus_surface.jpg' },
-            { name: 'Earth', radius: 0.09, orbitalRadius: 2.8, orbitalSpeed: 0.0298, color: 0x0077BE, rotationSpeed: 0.02, texture: 'textures/earth.jpg' },
-            { name: 'Mars', radius: 0.06, orbitalRadius: 3.5, orbitalSpeed: 0.024, color: 0xCC0000, rotationSpeed: 0.015, texture: 'textures/mars.jpg' },
-            { name: 'Jupiter', radius: 0.4, orbitalRadius: 6.0, orbitalSpeed: 0.013, color: 0xC48F57, rotationSpeed: 0.03, texture: 'textures/jupiter.jpg' },
-            { name: 'Saturn', radius: 0.35, orbitalRadius: 7.5, orbitalSpeed: 0.009, color: 0xDAA520, rotationSpeed: 0.028, texture: 'textures/saturn.jpg' },
-            { name: 'Uranus', radius: 0.2, orbitalRadius: 9.0, orbitalSpeed: 0.006, color: 0xADD8E6, rotationSpeed: 0.01, texture: 'textures/uranus.jpg' },
-            { name: 'Neptune', radius: 0.19, orbitalRadius: 10.5, orbitalSpeed: 0.005, color: 0x4169E1, rotationSpeed: 0.009, texture: 'textures/neptune.jpg' }
+            { name: 'Mercury', radius: 0.05, orbitalRadius: 1.5, orbitalSpeed: 0.048, eccentricity: 0.205, color: 0xAAAAAA, rotationSpeed: 0.005, texture: 'textures/mercury.jpg' },
+            { name: 'Venus', radius: 0.08, orbitalRadius: 2.0, orbitalSpeed: 0.035, eccentricity: 0.007, color: 0xE6B800, rotationSpeed: 0.003, texture: 'textures/venus_surface.jpg' },
+            { name: 'Earth', radius: 0.09, orbitalRadius: 2.8, orbitalSpeed: 0.0298, eccentricity: 0.017, color: 0x0077BE, rotationSpeed: 0.02, texture: 'textures/earth.jpg' },
+            { name: 'Mars', radius: 0.06, orbitalRadius: 3.5, orbitalSpeed: 0.024, eccentricity: 0.094, color: 0xCC0000, rotationSpeed: 0.015, texture: 'textures/mars.jpg' },
+            { name: 'Jupiter', radius: 0.4, orbitalRadius: 6.0, orbitalSpeed: 0.013, eccentricity: 0.049, color: 0xC48F57, rotationSpeed: 0.03, texture: 'textures/jupiter.jpg' },
+            { name: 'Saturn', radius: 0.35, orbitalRadius: 7.5, orbitalSpeed: 0.009, eccentricity: 0.057, color: 0xDAA520, rotationSpeed: 0.028, texture: 'textures/saturn.jpg' },
+            { name: 'Uranus', radius: 0.2, orbitalRadius: 9.0, orbitalSpeed: 0.006, eccentricity: 0.046, color: 0xADD8E6, rotationSpeed: 0.01, texture: 'textures/uranus.jpg' },
+            { name: 'Neptune', radius: 0.19, orbitalRadius: 10.5, orbitalSpeed: 0.005, eccentricity: 0.011, color: 0x4169E1, rotationSpeed: 0.009, texture: 'textures/neptune.jpg' }
         ];
 
         const planets = [];
 
-        // Create a texture loader
-        const textureLoader = new THREE.TextureLoader();
-
         // Create and add planets to the scene
         planetsData.forEach(data => {
-            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            // Try to load the texture if available
             let material;
+
             if (data.texture) {
-                const planetTexture = textureLoader.load(data.texture);
-                material = new THREE.MeshBasicMaterial({ map: planetTexture });
+                try {
+                    const texture = textureLoader.load(data.texture);
+                    
+                    // Create PBR material with texture
+                    material = new THREE.MeshStandardMaterial({
+                        map: texture,
+                        metalness: 0.0,  // Non-metallic
+                        roughness: 0.7,  // Slightly rough surface
+                    });
+                    
+                    // Add special maps for certain planets
+                    if (data.name === 'Earth') {
+                        // Earth has normal and specular maps
+                        try {
+                            const normalMap = textureLoader.load('textures/earth_normal.jpg');
+                            material.normalMap = normalMap;
+                            material.normalScale = new THREE.Vector2(0.85, 0.85);
+                            
+                            const specularMap = textureLoader.load('textures/earth_specular.jpg');
+                            material.roughnessMap = specularMap;
+                            material.roughness = 0.5;
+                        } catch (e) {
+                            console.warn('Could not load Earth normal/specular maps');
+                        }
+                    } else if (data.name === 'Mercury') {
+                        // Mercury bump map
+                        try {
+                            const bumpMap = textureLoader.load('textures/mercury_bump.jpg');
+                            material.bumpMap = bumpMap;
+                            material.bumpScale = 0.005;
+                        } catch (e) {
+                            console.warn('Could not load Mercury bump map');
+                        }
+                    } else if (data.name === 'Venus') {
+                        // Venus bump map
+                        try {
+                            const bumpMap = textureLoader.load('textures/venus_bump.jpg');
+                            material.bumpMap = bumpMap;
+                            material.bumpScale = 0.005;
+                        } catch (e) {
+                            console.warn('Could not load Venus bump map');
+                        }
+                    } else if (data.name === 'Mars') {
+                        // Mars normal map
+                        try {
+                            const normalMap = textureLoader.load('textures/mars_normal.jpg');
+                            material.normalMap = normalMap;
+                            material.normalScale = new THREE.Vector2(1, 1);
+                        } catch (e) {
+                            console.warn('Could not load Mars normal map');
+                        }
+                    }
+                    
+                } catch (e) {
+                    console.warn(`Could not load texture for ${data.name}, using fallback material`);
+                    material = new THREE.MeshStandardMaterial({ 
+                        color: data.color,
+                        metalness: 0.0,
+                        roughness: 0.7
+                    });
+                }
             } else {
-                material = new THREE.MeshStandardMaterial({
+                // Fallback to basic material with color
+                material = new THREE.MeshStandardMaterial({ 
                     color: data.color,
-                    emissive: new THREE.Color(data.color),
-                    emissiveIntensity: 0.1
+                    metalness: 0.0,
+                    roughness: 0.7
                 });
             }
+
+            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
             const planet = new THREE.Mesh(geometry, material);
             planet.position.set(data.orbitalRadius, 0, 0); // Initial position
             scene.add(planet);
-            planets.push({ object: planet, data: data });
-
-            // Add Saturn's ring
+            
+            // Add ring for Saturn
             if (data.name === 'Saturn') {
-                const ringGeometry = new THREE.RingGeometry(data.radius * 1.2, data.radius * 2.0, 64);
-                const ringTexture = textureLoader.load('textures/saturn_ring_alpha.png');
-                const ringMaterial = new THREE.MeshStandardMaterial({
-                    map: ringTexture,
-                    alphaMap: ringTexture,
-                    transparent: true,
-                    side: THREE.DoubleSide
-                });
-                const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-                ring.rotation.x = Math.PI / 2; // Rotate to be horizontal
-                planet.add(ring); // Add ring as a child of Saturn
-                console.log('Saturn\'s ring added with texture');
+                try {
+                    // Ring geometry
+                    const innerRadius = data.radius * 1.2;
+                    const outerRadius = data.radius * 2.0;
+                    const ringGeometry = new THREE.RingGeometry(innerRadius, outerRadius, 64);
+                    
+                    // Ring material with transparency
+                    const ringTexture = textureLoader.load('textures/saturn_ring_alpha.png');
+                    const ringColorTexture = textureLoader.load('textures/saturn_ring_color.jpg');
+                    
+                    const ringMaterial = new THREE.MeshStandardMaterial({
+                        map: ringColorTexture,
+                        alphaMap: ringTexture,
+                        transparent: true,
+                        side: THREE.DoubleSide,
+                        roughness: 0.85,
+                        metalness: 0.0
+                    });
+                    
+                    // Create the ring mesh
+                    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                    ring.rotation.x = Math.PI / 2 + 0.15; // Tilt the ring slightly
+                    planet.add(ring); // Attach to planet
+                    
+                    console.log('Saturn rings added');
+                } catch (e) {
+                    console.warn('Could not load Saturn ring textures', e);
+                }
             }
+            
+            planets.push({ object: planet, data });
             console.log(`${data.name} added to scene`);
         });
 
@@ -321,7 +408,7 @@ function initThreeJS() {
             // General settings
             cameraDistance: camera.position.z,
             ambientLightIntensity: ambientLight.intensity,
-            pointLightIntensity: pointLight.intensity,
+            pointLightIntensity: sunLight.intensity,
             backgroundIntensity: [0, 0, 0], // Changed to a dark blue color
 
             // Quality settings (adjust segments)
@@ -362,7 +449,7 @@ function initThreeJS() {
         generalFolder.add(params, 'ambientLightIntensity', 0.0, 1.0, 0.01).onChange(value => {
             ambientLight.intensity = value;
         });
-        generalFolder.add(params, 'pointLightIntensity', 0.0, 5.0, 0.1).onChange(value => pointLight.intensity = value);
+        generalFolder.add(params, 'pointLightIntensity', 0.0, 5.0, 0.1).onChange(value => sunLight.intensity = value);
         generalFolder.addColor(params, 'backgroundIntensity').onChange(value => scene.background.setRGB(value[0] / 255, value[1] / 255, value[2] / 255));
 
         // Quality settings
@@ -449,13 +536,31 @@ function initThreeJS() {
                 }
             });
 
-            // Animate planets
+            // Animate planets with elliptical orbits
             const currentTime = performance.now() * 0.001; // Get current time in seconds
             planets.forEach(planetObj => {
                 const { object, data } = planetObj;
-                // Orbit around the sun
-                object.position.x = Math.cos(currentTime * data.orbitalSpeed) * data.orbitalRadius;
-                object.position.z = Math.sin(currentTime * data.orbitalSpeed) * data.orbitalRadius;
+                
+                // Calculate elliptical orbit position
+                const angle = currentTime * data.orbitalSpeed;
+                const a = data.orbitalRadius; // Semi-major axis
+                const e = data.eccentricity; // Eccentricity
+                const b = a * Math.sqrt(1 - e * e); // Semi-minor axis
+                
+                // Parametric form of ellipse
+                const x = a * Math.cos(angle);
+                const z = b * Math.sin(angle);
+                
+                // Apply orbital tilt randomly but consistently for each planet
+                const planetSeed = data.name.charCodeAt(0); // Use first character as seed
+                const tiltAngle = (planetSeed % 20) * 0.01; // Small tilt between 0 and 0.19
+                
+                // Apply position with orbital tilt
+                object.position.set(
+                    x,
+                    Math.sin(angle) * Math.sin(tiltAngle) * a * 0.05, // Small y-offset for tilt
+                    z
+                );
                 
                 // Rotate on its own axis
                 object.rotation.y += data.rotationSpeed;
